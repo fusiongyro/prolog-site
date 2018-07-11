@@ -1,0 +1,97 @@
+#+TITLE: Prolog's Advantage
+#+AUTHOR: Daniel K Lyons
+
+The other day I [[https://stackoverflow.com/questions/34033215/check-if-the-position-if-less-then-or-greater-then-another-position-prolog/34059544#34059544][answered a question on Stack Overflow that had to do
+with traversing a maze]]. Somewhat more idiomatically, the code would
+have looked like this:
+
+#+BEGIN_SRC prolog
+mazeCell(Maze, What, X@Y) :-
+    nth0(X, Maze, Row),
+    nth0(Y, Row, What).
+#+END_SRC
+
+Before I explain what’s special about this, let’s reflect for a moment
+on Prolog. [[http://paulgraham.com/arcll1.html][Paul Graham once observed:]]
+
+#+BEGIN_QUOTE
+You often hear that programming languages are good because they
+provide abstraction. I think what we really like is not abstraction
+per se but brevity. A way of expressing programs that was more
+abstract, but made your programs longer, would not be very enticing.
+(This is not just a hypothetical example. It happens in Prolog.)
+#+END_QUOTE
+
+Why might Prolog have a reputation for being expansive rather than
+brief? One reason that comes to mind is that Prolog doesn’t actually
+have block structure. Each basic block usually has to become its own
+predicate.
+
+Before I cower in defeat, let’s think about this maze problem. If I
+were writing in an object-oriented language and I wanted to create
+this maze abstraction, I would create an object to represent the maze,
+called Maze. I would add a method for finding what’s in the maze at a
+particular coordinate. I’d want a method for iterating through the
+maze, and maybe another one to look up the coordinate for a particular
+value. That last one, I may need to write a couple ways, one that
+returns all the occurrences, one that returns just one occurrence. I’d
+probably also want a class for the coordinate pairs, so I could treat
+them atomically, and maybe some class to combine a point and a value
+for the iteration scheme. In the end, I would wind up with probably
+seven or so methods and probably two or three classes and interfaces.
+It would look something like this:
+
+#+BEGIN_SRC java
+public class Point {
+  public int x, y;
+}
+
+public class Maze implements Iterable {
+  public class MazeLocation {
+    public Point location;
+    public char value;
+  }
+
+  public Point                  locationOf(char value) { /* ... */ }
+  public List<Point>            locationsOf(char value) { /* ... */ }
+  public char                   valueAt(Point point)   { /* ... */ }
+  public Iterator<MazeLocation> iterator() { /* ... */ }
+  ...
+}
+#+END_SRC
+
+What’s interesting about ~mazeCell/3~ is that it actually can do all
+of those things at the same time. ~mazeCell(+Maze, -Value, +Point)~
+(i.e. calling with a ground maze and point) returns the value at that
+point, equivalent to Java ~#valueAt~. Calling with just the maze
+(~mazeCell(+Maze, -Value, -Point)~) iterates the maze, like Java’s
+~#iterator~. Calling with the value and the maze (~mazeCell(+Maze,
++Value, -Point)~) searches the maze for that value, like Java’s
+~#locationsOf~ and ~#locationOf~. No new types were needed to
+represent a combination of multiple things; Prolog has no problem
+“returning” multiple values. Defining a new operator like ~@~ is
+trivial.
+
+You may object that the type and internal structure of the maze is not
+being hidden, and that may be true, but ~mazeCell/3~ doesn’t reveal
+bits of that structure directly. You could change your representation
+of mazes and just change ~mazeCell/3~; if all your other interactions
+with the maze go through it, they will continue to work. There is some
+loss of encapsulation (though Prolog implementations typically have
+modules which make it possible to regain it) but the inner structure
+can be mostly ignored since most queries can just go through this one
+relation.
+
+What’s really going on here is that we are not defining a “method” to
+iterate mazeCell, we are defining a relation between a maze, the
+locations in the maze and the contents of those locations. The
+relation is more abstract than a method; that’s why it encompasses so
+many different procedures in the procedural domain.
+
+So I dispute Paul Graham’s assertion. The Prolog code for some
+procedure may be larger than equivalent code in other languages. But
+you actually buy something for the higher abstraction: much greater
+flexibility, and that winds up paying off harder. The code for
+~mazeCell/3~ may be long compared to locationOf in Java, but you have
+to write essentially the same code four or five times where in Prolog,
+you could write it once. The total savings are big.

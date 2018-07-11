@@ -1,5 +1,6 @@
 #+TITLE: How to Average in Prolog
 #+AUTHOR: Daniel K Lyons
+#+OPTIONS: ':t
 
 If I had to [[https://stackoverflow.com/questions/44447546/how-to-do-average-in-prolog][average a list of numbers]], I would probably do it like this:
 
