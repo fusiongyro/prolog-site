@@ -1,0 +1,118 @@
+#+TITLE How to Average in Prolog
+#+AUTHOR Daniel K Lyons
+
+If I had to [[https://stackoverflow.com/questions/44447546/how-to-do-average-in-prolog][average a list of numbers]], I would probably do it like this:
+
+#+BEGIN_SRC prolog
+averagelist(List, Avg) :- 
+  length(List, N), sumlist(List, Sum), 
+  Avg is Sum / N.
+#+END_SRC
+
+This resembles the actual mathematical definition. Then you could just
+make a list of numbers and average that. @lurker is right, this is a
+terrible way to go, but it would work:
+
+#+BEGIN_SRC prolog
+average(N, Avg) :- 
+  findall(I, between(1, N, I), Is),
+  averagelist(Is, Avg).
+#+END_SRC
+
+This is building up abstraction. But of course, this is for a class
+and the important thing is to not use Prolog or learn declarative
+programming or solve actual problems but rather to perform meaningless
+inductive calisthenics to prove you understand recursion. So a
+"better" (i.e. worse but likelier to be accepted by a clueless
+professor) solution is to take the procedural code:
+
+#+BEGIN_SRC 
+average(list) ::= 
+  sum := 0
+  count := 0
+  repeat with i ∈ list
+    sum := sum + i
+    count := count + 1
+  return sum / count
+#+END_SRC
+
+and convert it into equivalent Prolog code:
+
+#+BEGIN_SRC prolog
+average(List, Result) :- average(List, 0, 0, Result).
+
+average([], Sum, Count, Result) :- Result is Sum / Count.
+average([X|Xs], Sum, Count, Result) :- 
+  Sum1 is Sum + X,
+  succ(Count, Count1),
+  average(Xs, Sum1, Count1, Result).
+#+END_SRC
+
+The list result of my ~findall/3~ must be delicately hand-assembled
+using only tools available in the 18th century lest anyone develop a
+sense that Prolog can be used effectively in fewer than 40 lines of
+code:
+
+#+BEGIN_SRC prolog
+iota(N, Result)        :- iota(1, N, Result).
+iota(X, Y, [X|Result]) :- X < Y, succ(X,X1), iota(X1, Y, Result).
+iota(X, X, [X]).
+#+END_SRC
+
+Then you could build ~averagelist/2~ without the taint of library code
+(of course, you'll have to write ~length/2~ and ~sumlist/2~, and
+probably ~member/2~ even though it isn't used, but just because it's
+clever and useful and it sort of seems like it should be in the source
+file next to all this other stuff we might need), but it would look
+generally like this:
+
+#+BEGIN_SRC prolog
+average(N, Avg) :-
+  iota(N, List),
+  averagelist(List, Avg).
+#+END_SRC
+
+Now, of course, it will be pointed out that the introduction of
+additional predicates that are not directly answers to the take home
+assignment are illegitimate and will be penalized as doing such leads
+to readability, maintainability, breaking problems down into
+manageable pieces and other things that are not directly related to
+the goal of the assignment (to make Prolog appear tedious yet opaque)
+so we could now look at this and realize that if we want to flatten
+these two predicates together we ought to be able to by just smushing
+together their state variables and doing all the work of both, like
+this:
+
+#+BEGIN_SRC prolog
+average(N, Avg) :- average(1, N, 0, 0, Avg).
+
+average(X, Y, Sum, Count, Avg) :-
+    X < Y,
+    Sum1 is Sum + X,
+    succ(Count, Count1),
+    succ(X, X1),
+    average(X1, Y, Sum1, Count1, Avg).
+average(X, X, Sum, Count, Avg) :-
+    Sum1 is Sum + X,
+    succ(Count, Count1),
+    Avg is Sum1 / Count1.
+#+END_SRC
+
+Now this is starting to look like Professor of Programming Languages
+code! We went from basically four little readable lines to 9 or 10
+repetitive lines and a lot of book-keeping and state! I think we're on
+the right track now, let's review how it works:
+
+
+1. ~average/2~ is just a call to ~average/5~ with our state
+   initialized (no sum, no count, starting value = 1).
+2. ~average/5~ has two cases: a base case where the count-up-to value
+   and the current-count value are equal, and an inductive case where
+   the current-count is less.
+3. add up the blah blah blah you get the point
+
+The key takeaways here are: 1) Prolog has a terse, high-level,
+readable and comprehensible standard library, which you are prohibited
+from using in school, and 2) any procedural loop can be made working
+Prolog by creating a recursive helper predicate and moving the code
+around.
