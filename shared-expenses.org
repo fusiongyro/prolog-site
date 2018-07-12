@@ -328,216 +328,175 @@ reconcile_all(Donations, Expenditures, Reconciliation) :-
 
 If we run what we have so far, we'll get exactly where everybody
 stands in terms of what they've spent:
-  
-  <screen>?- reconcile(X).
-X = [angel spent 8100, debra spent -700, dexter spent 7300, harry spent -100].</screen>
 
-  
-    There are two problems with these numbers. First, they do not yet
-    include expected contributions, and two, some are negative. But,
-    using this and the expected contribution from above, we can
-    convert this into a list of who owes and who is owed. Then all the
-    numbers will be positive, and their role will be determined by
-    whether they are a debt or a credit rather than by their sign.
-    This goes against what would be considered proper design in a
-    procedural or object-oriented system, but it will actually be a
-    benefit in Prolog because it will create pattern matching
-    opportunities that would not exist with just a bare number. To
-    make it attractive, let's add some additional operators:
-  
+#+BEGIN_SRC prolog
+?- reconcile(X).
+X = [angel spent 8100, debra spent -700, dexter spent 7300, harry spent -100].
+#+END_SRC  
 
-<programlisting role="source">:- op(400, xfx, owes).
+There are two problems with these numbers. First, they do not yet
+include expected contributions, and two, some are negative. But, using
+this and the expected contribution from above, we can convert this
+into a list of who owes and who is owed. Then all the numbers will be
+positive, and their role will be determined by whether they are a debt
+or a credit rather than by their sign. This goes against what would be
+considered proper design in a procedural or object-oriented system,
+but it will actually be a benefit in Prolog because it will create
+pattern matching opportunities that would not exist with just a bare
+number. To make it attractive, let's add some additional operators:
+  
+#+BEGIN_SRC prolog :tangle yes
+:- op(400, xfx, owes).
 :- op(400, xfx, is_owed).
 :- op(400, xfy, gives).
-</programlisting>
+#+END_SRC
   
+Now we can write a predicate to take the raw list of where people
+stand and compute people's credit/debt status. I call this process
+~balances/2~. To do this, we have to consider three cases.
   
-    Now we can write a predicate to take the raw list of where people
-    stand and compute people's credit/debt status. I call this process
-    ~balances/2~. To do this, we have to consider
-    three cases.
-  
-
-  <orderedlist>
-    <listitem>
+1. In the case where the person spent more than the expected
+   contribution, that roommate is owed the difference.
       
-        In the case where the person spent more than the expected
-        contribution, that roommate is owed the difference.
-      
-    
-      <programlisting role="source">balances([Roommate spent Expenditure|Roommates], [Roommate is_owed Amount|Debts]) :-
+#+BEGIN_SRC prolog :tangle yes
+balances([Roommate spent Expenditure|Roommates], [Roommate is_owed Amount|Debts]) :-
     expected_contribution(Baseline),
     Expenditure > Baseline,
     Amount is Expenditure - Baseline,
     balances(Roommates, Debts).
-</programlisting>
-    </listitem>
-
-    <listitem>
+#+END_SRC    
       
-        In the case where the person spent less than the expected
-        contribution, they owe the difference:
-      
+2. In the case where the person spent less than the expected
+   contribution, they owe the difference:
 
-      <programlisting role="source">balances([Roommate spent Expenditure|Roommates], [Roommate owes Amount|Debts]) :-
+#+BEGIN_SRC prolog :tangle yes
+balances([Roommate spent Expenditure|Roommates], [Roommate owes Amount|Debts]) :-
     expected_contribution(Baseline),
     Baseline > Expenditure,
     Amount is Baseline - Expenditure,
     balances(Roommates, Debts).
-</programlisting>
-    </listitem>
+#+END_SRC     
 
-    <listitem>
-      
-        In the case where the person spent exactly the expected
-        contribution, they can be omitted from further discussion;
-        they are "square" as it were. This one detail
-        prevents us from using a ~maplist/3~ to deal with
-        this, though we could conceivably use ~foldl/4~.
-      
+3. In the case where the person spent exactly the expected
+   contribution, they can be omitted from further discussion; they are
+   "square" as it were. This one detail prevents us from using a
+   ~maplist/3~ to deal with this, though we could conceivably use
+   ~foldl/4~.
 
-      <programlisting role="source">balances([_ spent Baseline|Roommates], Debts) :-
+#+BEGIN_SRC prolog :tangle yes
+balances([_ spent Baseline|Roommates], Debts) :-
     expected_contribution(Baseline),
     balances(Roommates, Debts).
-</programlisting>
-    </listitem>
-
-    <listitem>
+#+END_SRC      
       
-        And of course we need a base case for our recursion, the case
-        where we're out of people to consider.
+4. And of course we need a base case for our recursion, the case
+   where we're out of people to consider.
       
+#+BEGIN_SRC prolog :tangle yes
+balances([], []).
+#+END_SRC
 
-      <programlisting role="source">balances([], []).
-</programlisting>
-    </listitem>
-  </orderedlist>
+At this point, we can now take a look at what the final balances are:
 
-  At this point, we can now take a look at what the final balances are:
-
-  <screen>?- reconcile(X), balances(X, Y).
+#+BEGIN_SRC prolog
+?- reconcile(X), balances(X, Y).
 X = [angel spent 8100, debra spent -700, dexter spent 7300, harry spent -100],
-Y = [angel is_owed 4450, debra owes 4350, dexter is_owed 3650, harry owes 3750].</screen>
-
+Y = [angel is_owed 4450, debra owes 4350, dexter is_owed 3650, harry owes 3750].
+#+END_SRC
   
-    This looks pretty good! Let's figure out the suggestions
-    for complete reconciliation.
+This looks pretty good! Let's figure out the suggestions for complete
+reconciliation.
   
+1. First we have the base case: when there are no discrepancies, no
+   further suggestions are required.
+      
+#+BEGIN_SRC prolog :tangle yes
+resolution([], []).
+#+END_SRC
 
-  <orderedlist>
-    <listitem>
+2. The next case is a special one, where one person owes exactly what
+   another person is owed. In that case, we generate the expected
+   suggestion and then recur, having dealt with both roommates.
       
-        First we have the base case: when there are no discrepancies,
-        no further suggestions are required.
+   Intuitively, it seems likely that this case will be triggered
+   once at the end of each suggestion invocation.
       
-
-      <programlisting role="source">resolution([], []).
-</programlisting>
-    </listitem>
-
-    <listitem>
-      
-        The next case is a special one, where one person owes exactly
-        what another person is owed. In that case, we generate the
-        expected suggestion and then recur, having dealt with both
-        roommates.
-      
-
-      
-	Intuitively, it seems likely that this case will be triggered
-	once at the end of each suggestion invocation.
-      
-      
-    <programlisting role="source">resolution(Situation, [Debtor gives Amount to Creditor|Suggestions]) :-
+#+BEGIN_SRC prolog :tangle yes
+resolution(Situation, [Debtor gives Amount to Creditor|Suggestions]) :-
     select(Debtor owes Amount, Situation, WithoutDebtor),
     select(Creditor is_owed Amount, WithoutDebtor, WithoutCreditor),
     resolution(WithoutCreditor, Suggestions).
-</programlisting>
-    </listitem>
+#+END_SRC      
 
-    <listitem>
-      
-	This case and the following have a similar structure. In both
-	cases, we peel off somebody who owes and somebody who is owed
-	money. Then we examine the debt and the credit and see which
-	is greater. If the debt is greater, the credit will be cleared
-	but the some part of the debt will remain, so the creditor
-	will be removed from the situation list but the debtor will be
-	reinserted with a wly reduced debt.
-      
-      
-    <programlisting role="source">resolution(Situation, [Debtor gives Credit to Creditor|Suggestions]) :-
+3. This case and the following have a similar structure. In both
+   cases, we peel off somebody who owes and somebody who is owed
+   money. Then we examine the debt and the credit and see which is
+   greater. If the debt is greater, the credit will be cleared but the
+   some part of the debt will remain, so the creditor will be removed
+   from the situation list but the debtor will be reinserted with a
+   reduced debt.
+
+#+BEGIN_SRC prolog :tangle yes
+resolution(Situation, [Debtor gives Credit to Creditor|Suggestions]) :-
     select(Debtor owes Debt, Situation, WithoutDebtor),
     select(Creditor is_owed Credit, WithoutDebtor, WithoutCreditor),
     Debt > Credit,
     NewDebt is Debt - Credit,
     resolution([Debtor owes NewDebt|WithoutCreditor], Suggestions).
-</programlisting>
-    </listitem>
+#+END_SRC
 
-    <listitem>
+4. This is the opposite case, where the credit is greater, so the 
+   debt is cleared while some part of the credit remains.
       
-	This is the opposite case, where the credit is greater, so the
-	debt is cleared while some part of the credit remains.
-      
-
-    <programlisting role="source">resolution(Situation, [Debtor gives Debt to Creditor|Suggestions]) :-
+#+BEGIN_SRC prolog :tangle yes
+resolution(Situation, [Debtor gives Debt to Creditor|Suggestions]) :-
     select(Debtor owes Debt, Situation, WithoutDebtor),
     select(Creditor is_owed Credit, WithoutDebtor, WithoutCreditor),
     Credit > Debt,
     NewCredit is Credit - Debt,
     resolution([Creditor is_owed NewCredit|WithoutCreditor], Suggestions).
-</programlisting>
-    </listitem>
-  </orderedlist>
+#+END_SRC
 
+ 
+The first version of the code is now basically complete. You can run
+it like so:
   
-    The first version of the code is now basically complete. You
-    can run it like so:
-  
-
-  <screen>?- reconcile(X), balances(X, Y), resolution(Y, Z), write(Z), nl.
+#+BEGIN_SRC prolog
+?- reconcile(X), balances(X, Y), resolution(Y, Z), write(Z), nl.
 [debra gives 3650 to dexter,debra gives 700 to angel,harry gives 3750 to angel]
 X = [angel spent 8100, debra spent -700, dexter spent 7300, harry spent -100],
 Y = [angel is_owed 4450, debra owes 4350, dexter is_owed 3650, harry owes 3750],
 Z = [debra gives 3650 to dexter, debra gives 700 to angel, harry gives 3750 to angel] ;
-</screen>
-
+#+END_SRC
   
-    You'll notice now that you can get several solutions. This is an
-    automatic result of using Prolog to solve this problem. All of the
-    solutions are equivalent, in the sense that everybody with debt
-    pays up to somebody and everybody with a credit is reimbursed. In
-    fact several of the solutions are simply the same instructions
-    reordered. This is normal and not undesirable.
+You'll notice now that you can get several solutions. This is an
+automatic result of using Prolog to solve this problem. All of the
+solutions are equivalent, in the sense that everybody with debt pays
+up to somebody and everybody with a credit is reimbursed. In fact
+several of the solutions are simply the same instructions reordered.
+This is normal and not undesirable.
   
-
+Another thing to note is that we have arrived at a reasonably
+efficient solution (at least, for the case sizes we're likely to
+actually address) without using any cuts. This is also desirable. The
+cut interferes with Prolog's reasoning system. It's much better to use
+logic to constraint Prolog's behavior, and only use green cuts to help
+Prolog avoid unnecessary computations that are guaranteed to fail,
+without altering its behavior in any observable way.
   
-    Another thing to note is that we have arrived at a reasonably
-    efficient solution (at least, for the case sizes we're likely to
-    actually address) without using any cuts. This is also
-    desirable. The cut interferes with Prolog's reasoning system. It's
-    much better to use logic to constraint Prolog's behavior, and only
-    use green cuts to help Prolog avoid unnecessary computations that
-    are guaranteed to fail, without altering its behavior in any
-    observable way.
+Let's package it up in a single convenient method:
   
-
-  
-    Let's package it up in a single convenient method:
-  
-
-  <programlisting role="source">solve(Solution) :-
+#+BEGIN_SRC prolog :tangle yes
+solve(Solution) :-
     reconcile(Expenditures), 
     balances(Expenditures, Balances), 
     resolution(Balances, Solution).
-</programlisting>
+#+END_SRC
 
+And in action, we see it still works:
   
-    And in action, we see it still works:
-  
-
-  <screen>?- solve(Solution).
+#+BEGIN_SRC prolog
+?- solve(Solution).
 Solution = [debra gives 3650 to dexter, debra gives 700 to angel, harry gives 3750 to angel] ;
 Solution = [debra gives 3650 to dexter, harry gives 3750 to angel, debra gives 700 to angel] ;
 Solution = [harry gives 3650 to dexter, harry gives 100 to angel, debra gives 4350 to angel] ;
@@ -547,104 +506,85 @@ Solution = [debra gives 4350 to angel, harry gives 3650 to dexter, harry gives 1
 Solution = [harry gives 3750 to angel, debra gives 700 to angel, debra gives 3650 to dexter] ;
 Solution = [harry gives 3750 to angel, debra gives 3650 to dexter, debra gives 700 to angel] ;
 false.
-</screen>
+#+END_SRC
 
-  <sidebar>
-    <title>A digression on expressiveness and terseness</title>
-    
-    
-      If you read the original blog post, you were probably both
-      impressed and somewhat miffed by the completely obtuse
-      code. This plays nicely into what Paul Graham so memorably
-      implied about Prolog, that a language can be high level, but if
-      it isn't terse why would it be worth knowing? Is it true that
-      <quote>it's all downhill after you write
-      ~append/3~</quote>?
-    
+#+BEGIN_sidebar
+* A digression on expressiveness and terseness
 
+If you read the original blog post, you were probably both impressed
+and somewhat miffed by the completely obtuse code. This plays nicely
+into what Paul Graham so memorably implied about Prolog, that a
+language can be high level, but if it isn't terse why would it be
+worth knowing? Is it true that "it's all downhill after you
+write ~append/3~"?
     
-      I suppose since you're here, you have some interest in
-      Prolog. One of the main reasons for this discussion is because I
-      want to instill in you, and perhaps the rest of the world, the
-      idea that terseness is not necessarily the greatest end. Prolog
-      is very seldom terse. But when written well, it is transparent
-      and intuitive in ways that other languages simply never get to
-      be. It can also be horrifyingly obtuse and confusing, and it can
-      take a lot of unlearning to learn, but I contend that it is
-      worth it.
+I suppose since you're here, you have some interest in Prolog. One of
+the main reasons for this discussion is because I want to instill in
+you, and perhaps the rest of the world, the idea that terseness is not
+necessarily the greatest end. Prolog is very seldom terse. But when
+written well, it is transparent and intuitive in ways that other
+languages simply never get to be. It can also be horrifyingly obtuse
+and confusing, and it can take a lot of unlearning to learn, but I
+contend that it is worth it.
     
-
+Looking at the code we just wrote, one way of looking at it is that it
+does in 20 or 50 lines what Haskell did in 10 or 20. And there's
+something to be said about that. But the Haskell code is basically
+incomprehensible, whereas the Prolog code perfectly reflects what it
+is that we're doing, matching up debtors to creditors and transferring
+money. Where the Haskell code started with a DSL and then went
+full-bore into Haskell-land, the Prolog code started with a DSL and
+then continued to use that DSL to code the solution. We wound up with
+the best of both, and a great deal of what could have made Applescript
+great: a well-defined representation that recalled the natural
+language version, and made it easier to reason about what we were up
+to.
     
-      Looking at the code we just wrote, one way of looking at it is
-      that it does in 20 or 50 lines what Haskell did in 10 or 20. And
-      there's something to be said about that. But the Haskell code is
-      basically incomprehensible, whereas the Prolog code perfectly
-      reflects what it is that we're doing, matching up debtors to
-      creditors and transferring money. Where the Haskell code
-      started with a DSL and then went full-bore into Haskell-land,
-      the Prolog code started with a DSL and then continued to use
-      that DSL to code the solution. We wound up with the best of
-      both, and a great deal of what could have made Applescript
-      great: a well-defined representation that recalled the natural
-      language version, and made it easier to reason about what we
-      were up to.
-    
-
-    
-      Is Prolog right for every situation? No, of course not. But I
-      think it's right for a lot more than it gets given credit
-      for. Maybe these attributes would not make it especially
-      appropriate for programmers, but I do wonder if they might make
-      it more appropriate for non-programmers, who are less fixated on
-      performance and perfection, but could use a more malleable
-      language that more directly represents their interests.
-    
-  </sidebar>
-
+Is Prolog right for every situation? No, of course not. But I think
+it's right for a lot more than it gets given credit for. Maybe these
+attributes would not make it especially appropriate for programmers,
+but I do wonder if they might make it more appropriate for
+non-programmers, who are less fixated on performance and perfection,
+but could use a more malleable language that more directly represents
+their interests.
+#+END_sidebar
   
-    Whenever input is involved in Prolog, it's tempting to use a
-    /definite clause grammar/ or
-    DCG. In this particular case it almost isn't
-    worth it, because the Prolog code is so close to what one would
-    want for an input format it's pretty meaningless to improve on
-    it. But let's anyway, for the thrill of it. We'll start by
-    including the ~dcg/basics~ library.
-  
-  <programlisting role="source">:- use_module(library(dcg/basics)).
-</programlisting>
+Whenever input is involved in Prolog, it's tempting to use a /definite
+clause grammar/ or DCG. In this particular case it almost isn't worth
+it, because the Prolog code is so close to what one would want for an
+input format it's pretty meaningless to improve on it. But let's
+anyway, for the thrill of it. We'll start by including the
+~dcg/basics~ library.
 
+#+BEGIN_SRC prolog :tangle yes
+:- use_module(library(dcg/basics)).
+#+END_SRC
   
-    We're going to define a document as one or more entries, where
-    each entry will be so-and-so spent some-such or so-and-so gave
-    some-such to so-and-so. In other words, we'll have a production
-    for spending and a production for giving.
-  
+We're going to define a document as one or more entries, where each
+entry will be so-and-so spent some-such or so-and-so gave some-such to
+so-and-so. In other words, we'll have a production for spending and a
+production for giving.
 
-  <programlisting role="source"><![CDATA[document([]) --> [].
+#+BEGIN_SRC prolog :tangle yes
+document([]) --> [].
 document([Entry|Entries]) --> entry(Entry), blanks, document(Entries).
 
 entry(Entry) --> spent(Entry) ; gave(Entry).
-]]></programlisting>
+#+END_SRC  
 
+Now, spending is pretty straightforward; we'll just match lines that
+look like ~Sally spent $1000~. We won't be expecting a period, just a
+newline. And we can swallow the dollar sign, should there happen to be
+one, without worrying if there isn't one.
   
-    Now, spending is pretty straightforward; we'll just match lines
-    that look like ~Sally spent $1000~. We won't be
-    expecting a period, just a newline. And we can swallow the dollar
-    sign, should there happen to be one, without worrying if there
-    isn't one.
-  
-  
-  <programlisting role="source"><![CDATA[
+#+BEGIN_SRC prolog :tangle yes
 spent(Person spent Amount) --> word(Person), whites, "spent", whites, currency(Amount).
-]]></programlisting>
-
+#+END_SRC
   
-    Giving isn't too bad either, but since we have this opportunity,
-    let's handle both "Sally gave 1000 to Jim" and
-    "Sally gave Jim 100."
+Giving isn't too bad either, but since we have this opportunity, let's
+handle both "Sally gave 1000 to Jim" and "Sally gave Jim 100."
   
-    
-  <programlisting role="source"><![CDATA[
+#+BEGIN_SRC prolog :tangle yes
 gave(Donor gave Amount to Recipient) --> 
     word(Donor), whites, 
     "gave", whites, 
@@ -656,27 +596,21 @@ gave(Donor gave Amount to Recipient) -->
     "gave", whites, 
     word(Recipient), whites, 
     currency(Amount).
-]]></programlisting>
-
+#+END_SRC
   
-    The following are really simple productions, practically boilerplate
-  
+The following are really simple productions, practically boilerplate:
 
-  <programlisting role="source"><![CDATA[
+#+BEGIN_SRC prolog :tangle yes
 nl --> "\n".
 
 currency(Amount) --> "$", number(Amount).
 currency(Amount) --> number(Amount).
-]]></programlisting>
-
+#+END_SRC
   
-    The ~word//1~ and ~chars//1~ productions are
-    borrowed from <link
-    xl:href="http://www.amzi.com/manuals/amzi/pro/ref_dcg.htm">the
-    Amzi Prolog User's Guide and Reference.</link>
+The ~word//1~ and ~chars//1~ productions are borrowed from [[http://www.amzi.com/manuals/amzi/pro/ref_dcg.htm][the Amzi
+Prolog User's Guide and Reference]].
   
-
-  <programlisting role="source"><![CDATA[
+#+BEGIN_SRC prolog :tangle yes
 word(Word) --> { var(Word), ! },
    chars(Chars), { atom_codes(Word, Chars) }.
 word(Word) --> { nonvar(Word) },
@@ -691,40 +625,43 @@ is_char(X) :- X >= 0'a, X =< 0'z, !.
 is_char(X) :- X >= 0'A, X =< 0'Z, !.
 is_char(X) :- X >= 0'0, X =< 0'9, !.
 is_char(0'_).
-]]>
-</programlisting>
+#+END_SRC
 
-  
-    Now we can make an example file with the same information as the
-    original database. Save this file in
-    ~shared-expenses.txt~ and let's try to parse it:
-  
+Now we can make an example file with the same information as the
+original database. Save this file in ~shared-expenses.txt~ and let's
+try to parse it:
 
-  <screen><xi:include href="shared-expenses.txt" parse="text" encoding="utf-8"/></screen>
+#+BEGIN_SRC text :tangle shared-expenses.txt
+Dexter gave $2000 to Harry
 
+Dexter spent $5300
+Angel  spent $2700
+Debra  spent $800
+Harry  spent $1900
+Debra  spent $1700
+Angel  spent $2200
+Angel  gave $3200 to Debra
+#+END_SRC
   
-    Testing this shows that it is working:
-  
+Testing this shows that it is working:
 
-  <screen>?- phrase_from_file(document(X), 'shared-expenses.txt').
+#+BEGIN_SRC prolog
+?- phrase_from_file(document(X), 'shared-expenses.txt').
 X = ['Dexter' gave 2000 to 'Harry', 'Debra' spent 800, 'Harry' spent
 1900, 'Debra' spent 1700, 'Angel' spent 2200, 'Angel' gave 3200 to
 'Debra'].
-</screen>
-
+#+END_SRC
   
-    This is great, but we need to get these facts into the database somehow. A simple way is with ~forall/1~:
-  
+This is great, but we need to get these facts into the database somehow. A simple way is with ~forall/1~:
 
-  <programlisting role="source">load_document(Document) :-
+#+BEGIN_SRC prolog :tangle yes
+load_document(Document) :-
     forall(member(Fact, Document), assertz(Fact)).
-  </programlisting>
-
+#+END_SRC  
   
-    Now let's make a simple main function so we can call this from a script:
+Now let's make a simple main function so we can call this from a script:
   
-
-  <programlisting role="source">
+#+BEGIN_SRC prolog :tangle yes
 main :-
   optparse:opt_arguments([], _, [File]),
   once(process_file(File)).
@@ -733,14 +670,8 @@ process_file(File) :-
   phrase_from_file(document(Document), File),
   load_document(Document),
   solve(Solution),
-  write(Solution), nl.</programlisting>
-  
-  
-    You may download <link xl:href="shared-expenses.docbook">source
-    code for this article</link>
-    or <link xl:href="shared-expenses.pl">generated Prolog source
-    code</link>. There is also <link xl:href="shared-expenses.pdf">a
-    hardly-customized PDF version</link>. The <link
-    xl:href="shared-expenses.txt">sample input file</link> and <link
-    xl:href="shared-expenses">executable wrapper</link> are also available.
-  
+  write(Solution), nl.
+#+END_SRC  
+
+You may download [[file:/shared-expenses.org][source code for this article]] or [[file:/shared-expenses.pl][extracted Prolog source code]]
+from this article.
