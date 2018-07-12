@@ -126,7 +126,7 @@ universality as much as possible. The more ways the predicate can
 be called, the freer we are in applying Prolog's power to our
 problem.
 
-#+BEGIN_SIDEBAR
+#+begin_sidebar
 * Modes and Instantiation Patterns
 
 Sometimes you will see Prolog predicates documented like so:
@@ -186,7 +186,7 @@ We could be more explicit with our documentation by specifying:
 These documentation comments are extremely handy when learning a new
 Prolog API, but we won't spend too much time worrying about them in
 this program.
-#+END_SIDEBAR
+#+end_sidebar
 
 We can now calculate the total outlay on top of ~total_spent/2~ or on
 top of the raw ~spent/2~ facts; either way, it doesn't affect the
@@ -246,108 +246,89 @@ expected_contribution(X) :-
 X = 3650.
 #+END_SRC
 
-    So, we've already calculated what everybody should have
-    contributed and what everybody has already spent. Now we simply
-    need to account for individual donations and then we can output
-    who should pay what to whom.
+So, we've already calculated what everybody should have contributed
+and what everybody has already spent. Now we simply need to account
+for individual donations and then we can output who should pay what to
+whom.
   
+There are two ways forward from here. Let's examine them both. The
+first one is to use the database to store what we calculate. We could
+~assertz(owes(Person, ExpectedContribution))~ and then have one
+process to update that value, first with what they've spent, then with
+the result of applying their donations. A part of me balks at this
+because it means storing intermediate results in the fact database,
+which is not susceptible to backtracking and can therefore introduce
+errors in a way that our raw data cannot. (This is standard operating
+procedure in a forward-chaining reasoner like CLIPS, but that's a
+topic for another day).
+  
+A more classically Prolog approach would be to have a resolution
+process that pulls all the relevant data from the database and passes
+it along in lists recursively until all the outstanding transactions
+have been handled, and then forwards its final state to a process that
+displays the outcome. This strikes me as a cleaner approach, even
+though it necessitates using a list as a map (since Prolog doesn't
+really have a map datastructure). We'll gloss over this inefficiency.
 
+Odds are good if you're new to Prolog and come from a procedural
+background, the first solution will sound better to you. If you come
+from a functional background the second solution will probably sound
+better to you. It would be interesting to know which one you like
+better after you see them both, but I'm just going to show the Prolog
+style.
   
-    There are two ways forward from here. Let's examine them both. The
-    first one is to use the database to store what we calculate. We
-    could ~assertz(owes(Person, ExpectedContribution))~ and
-    then have one process to update that value, first with what
-    they've spent, then with the result of applying their donations. A
-    part of me balks at this because it means storing intermediate
-    results in the fact database, which is not susceptible to
-    backtracking and can therefore introduce errors in a way that our
-    raw data cannot. (This is standard operating procedure in a
-    forward-chaining reasoner like CLIPS, but that's a topic for
-    another day).
+First, let's say we're going to gather up all the expenditures and all
+the donations and then just forward them on to some other predicate
+that will reconcile them into a coherent list of what each person has
+paid.
   
-
-  
-    A more classically Prolog approach would be to have a resolution
-    process that pulls all the relevant data from the database and
-    passes it along in lists recursively until all the outstanding
-    transactions have been handled, and then forwards its final state
-    to a process that displays the outcome. This strikes me as a
-    cleaner approach, even though it necessitates using a list as a
-    map (since Prolog doesn't really have a map datastructure). We'll
-    gloss over this inefficiency.
-  
-
-  
-    Odds are good if you're new to Prolog and come from a procedural
-    background, the first solution will sound better to you. If you
-    come from a functional background the second solution will
-    probably sound better to you. It would be interesting to know which
-    one you like better after you see them both, but I'm just going to
-    show the Prolog style.
-  
-
-  
-    First, let's say we're going to gather up all the expenditures and all the donations and then just forward them on to some other predicate that will reconcile them into a coherent list of what each person has paid.
-  
-
-  <programlisting role="source">reconcile(Reconciliation) :-
+#+BEGIN_SRC prolog :tangle yes
+reconcile(Reconciliation) :-
     findall(X spent Amt, total_spent(X, Amt), Expenditures),
     findall(X gave Y to Z, X gave Y to Z, Donations),
     reconcile_all(Donations, Expenditures, Reconciliation).
-</programlisting>
-
+#+END_SRC
   
-    Let's jump to the interesting part and handle what to do with a
-    single donation. Intuitively, what we want to do is get the
-    donation. Whoever did the giving, this decreases their debt, and
-    whoever did the receiving, this increases theirs by the same
-    amount.
-  
+Let's jump to the interesting part and handle what to do with a single
+donation. Intuitively, what we want to do is get the donation. Whoever
+did the giving, this decreases their debt, and whoever did the
+receiving, this increases theirs by the same amount.
 
-  <programlisting role="source">reconcile(Donor gave Amt to Recipient,
+#+BEGIN_SRC prolog :tangle yes
+reconcile(Donor gave Amt to Recipient,
           PreviousExpenditures,
           [Donor spent DonorAfter, Recipient spent RecipientAfter | WithoutEither]) :-
     select(Donor spent DonorBefore, PreviousExpenditures, WithoutDonor),
     select(Recipient spent RecipientBefore, WithoutDonor, WithoutEither),
     DonorAfter is DonorBefore + Amt,
     RecipientAfter is RecipientBefore - Amt.
-</programlisting>
+#+END_SRC
+  
+The only thing that makes this confusing is our use of ~select/3~. I
+mentioned briefly that we would run into a situation using this
+approach where we needed to use a list as a map. What ~select/3~ does
+is remove an item from a list and give you back the list without that
+item. So in the preceding code, we used ~select/3~ twice, once to
+remove the donor and once to remove the recipient. By using a chain
+from ~PreviousExpenditures~ through ~WithoutDonor~ to ~WithoutEither~,
+we've threaded the state of the map through this rule. And then, like
+many Prolog rules, the work done in the body is synthesized into an
+out param; we prepend the new Donor and Recipient values onto the
+~WithoutEither~ list, effectively updating the values for ~Donor~ and
+~Recipient~ in the state variable.
 
-  
-    The only thing that makes this confusing is our use of
-    ~select/3~. I mentioned briefly that we would
-    run into a situation using this approach where we needed to use a
-    list as a map. What ~select/3~> does is remove
-    an item from a list and give you back the list without that
-    item. So in the preceding code, we used
-    ~select/3~> twice, once to remove the donor and
-    once to remove the recipient. By using a chain from
-    ~PreviousExpenditures~ through
-    ~WithoutDonor~ to ~WithoutEither~, we've
-    threaded the state of the map through this rule. And then, like
-    many Prolog rules, the work done in the body is synthesized into
-    an out param; we prepend the new Donor and Recipient values onto
-    the ~WithoutEither~ list, effectively updating the
-    values for ~Donor~ and ~Recipient~ in the
-    state variable.
-  
+This now looks like a perfect candidate for a fold, so let's go ahead
+and import the ~apply~ library for SWI-Prolog and use ~foldl/4~ to
+build ~reconcile_all/3~:
 
-  
-    This now looks like a perfect candidate for a fold, so let's go
-    ahead and import the ~apply~ library for SWI-Prolog and
-    use ~foldl/4~ to build
-    ~reconcile_all/3~:
-  
-
-  <programlisting role="source">reconcile_all(Donations, Expenditures, Reconciliation) :-
+#+BEGIN_SRC prolog :tangle yes
+reconcile_all(Donations, Expenditures, Reconciliation) :-
     foldl(reconcile, Donations, Expenditures, Reconciliation).
-</programlisting>
+#+END_SRC
 
+If we run what we have so far, we'll get exactly where everybody
+stands in terms of what they've spent:
   
-    If we run what we have so far, we'll get exactly where everybody
-    stands in terms of what they've spent:
-  
-
   <screen>?- reconcile(X).
 X = [angel spent 8100, debra spent -700, dexter spent 7300, harry spent -100].</screen>
 
